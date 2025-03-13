@@ -887,10 +887,14 @@ def create_visualizations(output_dir, viz_dir):
                     # Add tier as text on bars
                     for i, (tier, value) in enumerate(zip(top_10['creator_tier'], top_10[sort_col])):
                         plt.annotate(tier, xy=(i, value), ha='center', va='bottom')
+                        
+                    # Add value labels on top of bars
+                    for i, v in enumerate(top_10[sort_col]):
+                        plt.text(i, v + (max(top_10[sort_col])*0.02), f'{v:.1f}', ha='center')
                     
                     plt.xlabel('Creator')
                     plt.ylabel(label)
-                    plt.title('Top 10 Creators by Performance')
+                    plt.title(f'Top 10 Creators by {label} (Colored by Tier)', fontsize=14)
                     plt.xticks(rotation=45, ha='right')
                     plt.tight_layout()
                     plt.savefig(os.path.join(viz_dir, 'top_creators.png'))
@@ -968,11 +972,26 @@ def create_visualizations(output_dir, viz_dir):
                 
                 if display_col:
                     # Create bar chart
-                    plt.bar(time_slots['time_slot'], time_slots[display_col], color=sns.color_palette("coolwarm", len(time_slots)))
+                    bars = plt.bar(time_slots['time_slot'], time_slots[display_col], color=sns.color_palette("coolwarm", len(time_slots)))
+                    
+                    # Add value labels
+                    for i, v in enumerate(time_slots[display_col]):
+                        plt.text(i, v + (max(time_slots[display_col])*0.02), f'{v:.2f}', ha='center')
+                    
+                    # Calculate and show percentage differences from average
+                    avg_value = time_slots[display_col].mean()
+                    for i, v in enumerate(time_slots[display_col]):
+                        percentage_diff = ((v - avg_value) / avg_value) * 100
+                        plt.text(i, v/2, f'{percentage_diff:+.1f}%', ha='center', color='white', fontweight='bold')
                     
                     plt.xlabel('Time Slot')
                     plt.ylabel(label)
-                    plt.title('Performance by Time Slot')
+                    plt.title(f'Performance by Time Slot (% vs. Average)', fontsize=14)
+                    
+                    # Add average line
+                    plt.axhline(y=avg_value, color='r', linestyle='--', alpha=0.7, label='Average')
+                    plt.legend()
+                    
                     plt.tight_layout()
                     plt.savefig(os.path.join(viz_dir, 'time_slot_performance.png'))
                     plt.close()
@@ -990,12 +1009,37 @@ def create_visualizations(output_dir, viz_dir):
             if not calendar_data.empty:
                 plt.figure(figsize=(12, 8))
                 
-                # Create heatmap
-                ax = sns.heatmap(calendar_data, annot=True, cmap="YlGnBu", fmt=".0f", 
-                                linewidths=.5, cbar_kws={'label': 'Number of Categories Scheduled'})
+                # Calculate percentages for annotations
+                total_scheduled = calendar_data.values.sum()
+                percentage_data = (calendar_data / total_scheduled * 100).round(1)
                 
-                plt.title('Weekly Programming Intensity', fontsize=16)
+                # Create annotations with both count and percentage
+                annotations = np.empty_like(calendar_data.values, dtype=object)
+                for i in range(len(calendar_data.index)):
+                    for j in range(len(calendar_data.columns)):
+                        count = calendar_data.iloc[i, j]
+                        pct = percentage_data.iloc[i, j]
+                        annotations[i, j] = f'{int(count)}\n({pct:.1f}%)'
+                
+                # Create heatmap
+                ax = sns.heatmap(calendar_data, annot=annotations, cmap="YlGnBu", fmt="", 
+                               linewidths=.5, cbar_kws={'label': 'Number of Categories Scheduled'})
+                
+                # Highlight prime time slots (typically weekday evenings)
+                # We'll add a red border around these cells
+                prime_time_slots = [('Evening', 'Monday'), ('Evening', 'Tuesday'), 
+                                 ('Evening', 'Wednesday'), ('Evening', 'Thursday'), 
+                                 ('Evening', 'Friday')]
+                
+                for time_slot, day in prime_time_slots:
+                    if time_slot in calendar_data.index and day in calendar_data.columns:
+                        row_idx = calendar_data.index.get_loc(time_slot)
+                        col_idx = calendar_data.columns.get_loc(day)
+                        plt.gca().add_patch(plt.Rectangle((col_idx, row_idx), 1, 1, fill=False, edgecolor='red', lw=2))
+                
+                plt.title('Weekly Programming Intensity\n(Prime Time Slots Highlighted in Red)', fontsize=16)
                 plt.tight_layout()
+                
                 plt.savefig(os.path.join(viz_dir, 'programming_calendar_heatmap.png'))
                 plt.close()
                 
@@ -1017,30 +1061,60 @@ def create_visualizations(output_dir, viz_dir):
                 
                 # Add nodes (categories)
                 all_categories = set(crosspromo_data['category_1'].unique()) | set(crosspromo_data['category_2'].unique())
+                
+                # Calculate category importance from total strength
+                category_importance = {}
                 for cat in all_categories:
-                    G.add_node(cat)
+                    cat1_strength = crosspromo_data[crosspromo_data['category_1'] == cat]['strength'].sum()
+                    cat2_strength = crosspromo_data[crosspromo_data['category_2'] == cat]['strength'].sum()
+                    category_importance[cat] = cat1_strength + cat2_strength
+                
+                # Add nodes with size based on importance
+                for cat in all_categories:
+                    # Normalize the size between 500 and 1500
+                    size = 500 + (1000 * category_importance[cat] / max(category_importance.values()))
+                    G.add_node(cat, size=size)
                 
                 # Add edges with weights
                 max_strength = crosspromo_data['strength'].max()
+                edge_labels = {}
+                
                 for _, row in crosspromo_data.iterrows():
-                    G.add_edge(row['category_1'], row['category_2'], weight=row['strength']/max_strength)
+                    cat1, cat2 = row['category_1'], row['category_2']
+                    strength = row['strength']
+                    norm_strength = strength / max_strength
+                    
+                    G.add_edge(cat1, cat2, weight=norm_strength)
+                    edge_labels[(cat1, cat2)] = f"{strength:.0f}"
                 
-                # Set layout
-                pos = nx.spring_layout(G, seed=42)
+                # Use a deterministic layout
+                pos = nx.kamada_kawai_layout(G)
                 
-                # Draw nodes
-                nx.draw_networkx_nodes(G, pos, node_size=700, node_color='lightblue', alpha=0.8)
+                # Draw nodes with size based on importance
+                node_sizes = [G.nodes[cat]['size'] for cat in G.nodes()]
+                nx.draw_networkx_nodes(G, pos, node_size=node_sizes, 
+                                      node_color='lightblue', alpha=0.8)
                 
                 # Draw edges with variable width based on strength
                 for u, v, d in G.edges(data=True):
-                    nx.draw_networkx_edges(G, pos, edgelist=[(u, v)], width=d['weight']*5, alpha=0.7)
+                    nx.draw_networkx_edges(G, pos, edgelist=[(u, v)], 
+                                         width=d['weight']*7, 
+                                         alpha=0.7,
+                                         edge_color='#2c3e50')
                 
-                # Draw labels
-                nx.draw_networkx_labels(G, pos, font_size=10)
+                # Draw edge labels (strength values)
+                nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, 
+                                           font_size=8, font_color='#e74c3c')
                 
-                plt.title('Category Cross-Promotion Network', fontsize=16)
+                # Draw labels with font size based on importance
+                node_labels = {cat: cat for cat in G.nodes()}
+                nx.draw_networkx_labels(G, pos, labels=node_labels, 
+                                       font_size=10, font_weight='bold')
+                
+                plt.title('Category Cross-Promotion Network\n(Edge Values Show Connection Strength)', fontsize=16)
                 plt.axis('off')
                 plt.tight_layout()
+                
                 plt.savefig(os.path.join(viz_dir, 'category_cross_promotion_network.png'))
                 plt.close()
                 
@@ -1059,9 +1133,19 @@ def create_visualizations(output_dir, viz_dir):
                 
                 # Define colors for engagement levels
                 engagement_colors = {'Low': '#d4e6f1', 'Medium': '#5dade2', 'High': '#2e86c1'}
+                bar_width = 0.25
                 
                 # Plot engagement levels for each creator tier
-                for tier in engagement_data['creator_tier'].unique():
+                x_positions = []
+                x_labels = []
+                bar_colors = []
+                legend_handles = []
+                
+                # Prepare for position calculations
+                num_tiers = len(engagement_data['creator_tier'].unique())
+                tier_positions = np.arange(num_tiers)
+                
+                for i, tier in enumerate(sorted(engagement_data['creator_tier'].unique())):
                     tier_data = engagement_data[engagement_data['creator_tier'] == tier]
                     
                     # Sort by engagement level to ensure consistent order
@@ -1073,16 +1157,45 @@ def create_visualizations(output_dir, viz_dir):
                     
                     # Plot the data
                     if 'avg_conversion_rate' in tier_data.columns:
-                        plt.bar(
-                            [f"{tier} - {level}" for level in tier_data['engagement_level']], 
-                            tier_data['avg_conversion_rate'],
-                            color=[engagement_colors.get(level, '#1f77b4') for level in tier_data['engagement_level']]
-                        )
+                        for j, level in enumerate(tier_data['engagement_level']):
+                            x_pos = i + j * bar_width
+                            x_positions.append(x_pos)
+                            x_labels.append(f"{tier} - {level}")
+                            color = engagement_colors.get(level, '#1f77b4')
+                            bar_colors.append(color)
+                            
+                            # Create the bar
+                            bar = plt.bar(
+                                x_pos, 
+                                tier_data[tier_data['engagement_level'] == level]['avg_conversion_rate'].values[0],
+                                width=bar_width,
+                                color=color,
+                                label=level if i == 0 else ""  # Only add to legend once
+                            )
+                            
+                            # Remember the handle for the first occurrence of each level
+                            if i == 0:
+                                legend_handles.append(bar)
                 
-                plt.xlabel('Creator Tier - Engagement Level')
-                plt.ylabel('Conversion Rate')
-                plt.legend(title='Engagement Level')
-                plt.xticks(rotation=45, ha='right')
+                # Add a trend line for each tier to show engagement level effect
+                for i, tier in enumerate(sorted(engagement_data['creator_tier'].unique())):
+                    tier_data = engagement_data[engagement_data['creator_tier'] == tier]
+                    
+                    if len(tier_data) > 1:  # Need at least 2 points for a line
+                        x_indices = [i + j * bar_width for j in range(len(tier_data))]
+                        y_values = tier_data.sort_values('engagement_level')['avg_conversion_rate'].values
+                        plt.plot(x_indices, y_values, 'k--', alpha=0.5)
+                
+                # Set x-axis labels and ticks
+                plt.xticks([i + bar_width for i in range(num_tiers)], sorted(engagement_data['creator_tier'].unique()))
+                
+                plt.xlabel('Creator Tier')
+                plt.ylabel('Average Conversion Rate')
+                plt.title('Conversion Rate by Creator Tier and Engagement Level', fontsize=14)
+                
+                # Add proper legend with manual handles
+                plt.legend(handles=legend_handles, labels=['Low', 'Medium', 'High'], title='Engagement Level')
+                
                 plt.tight_layout()
                 plt.savefig(os.path.join(viz_dir, 'engagement_conversion.png'))
                 plt.close()
