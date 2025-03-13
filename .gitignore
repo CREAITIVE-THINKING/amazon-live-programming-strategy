@@ -1,1 +1,44 @@
- 
+# Python-specific
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.env/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Data files
+*.csv
+archive/
+archive (2)/
+data/
+YouTube.csv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Logs and temp files
+logs/
+*.log
+tmp/
+temp/
+temp_preview/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Excel temp files
+~$*.xlsx
+
+# Generated output files
+# Uncomment if you want to exclude these from version control
+# analysis/*.xlsx
+# visualizations/*.png 
