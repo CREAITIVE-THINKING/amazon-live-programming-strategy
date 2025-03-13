@@ -38,13 +38,14 @@ Breaks down creator performance by:
 - Creator tier classification
 - Performance comparison across creators
 
-### Conversion Rate Insights
-![Conversion Rate by Creator Tier and Engagement](visualizations/engagement_conversion.png)
+### Category Engagement Analysis
+![Category Engagement and Conversion Analysis](visualizations/engagement_conversion.png)
 
-Explores the relationship between:
-- Creator tiers
-- Engagement levels
-- Conversion rates
+Visualizes the relationship between:
+- Product categories
+- Engagement metrics
+- Conversion performance
+- Cross-category comparison
 
 ## Current Implementation: Synthetic Data Approach
 
