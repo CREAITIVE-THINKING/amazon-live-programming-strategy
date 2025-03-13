@@ -3,4 +3,6 @@ numpy
 matplotlib
 seaborn
 mdpdf
-openpyxl 
+openpyxl
+scipy
+networkx 
