@@ -354,6 +354,15 @@ def load_real_data():
             'conversion_rate': np.random.uniform(0.01, 0.2, size=len(orders))
         })
         
+        # Add product_category to sessions based on creator specialty
+        print("Adding product categories to sessions...")
+        def get_creator_category(creator_id):
+            if creator_id in creators['creator_id'].values:
+                return creators.loc[creators['creator_id'] == creator_id, 'creator_category'].iloc[0]
+            return 'Other'
+            
+        sessions['product_category'] = sessions['creator_id'].apply(get_creator_category)
+        
         # 6. Create engagement data based on YouTube metrics and orders
         print("Creating engagement data...")
         engagement_sample_size = min(5000, len(orders))
@@ -754,6 +763,30 @@ def create_viewer_engagement_pivot_tables(creators, products, orders, order_item
         # If we have too few rows after merging, it might indicate a problem
         if len(merged_data) < 10:
             print(f"Warning: Only {len(merged_data)} rows after merging engagement data with sessions")
+        
+        # Create engagement_level based on engagement_type or engagement_value
+        print("Creating engagement levels...")
+        if 'engagement_type' in merged_data.columns:
+            # Map engagement types to levels
+            engagement_level_mapping = {
+                'View': 'Low',
+                'Like': 'Medium',
+                'Comment': 'Medium',
+                'Share': 'High',
+                'Purchase': 'High'
+            }
+            merged_data['engagement_level'] = merged_data['engagement_type'].map(engagement_level_mapping).fillna('Low')
+        elif 'engagement_value' in merged_data.columns:
+            # Create engagement levels based on value percentiles
+            merged_data['engagement_level'] = pd.qcut(
+                merged_data['engagement_value'],
+                q=[0, 0.33, 0.67, 1],
+                labels=['Low', 'Medium', 'High']
+            )
+        else:
+            # Create a default engagement level if neither column exists
+            print("Warning: No engagement_type or engagement_value columns found. Creating default engagement levels.")
+            merged_data['engagement_level'] = np.random.choice(['Low', 'Medium', 'High'], size=len(merged_data), p=[0.4, 0.4, 0.2])
             
         # Engagement by Creator Tier
         if 'creator_id' in merged_data.columns:
