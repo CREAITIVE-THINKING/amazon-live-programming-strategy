@@ -30,13 +30,13 @@ Tracks monthly revenue performance across top product categories, highlighting:
 - Category growth patterns
 - Potential programming opportunities
 
-### Creator Performance Analysis
-![Top Creators by Revenue Per Minute](visualizations/top_creators_rpm.png)
+### Top 10 Creators by RPM
+![Top 10 Creators by Revenue Per Minute](visualizations/top_creators.png)
 
 Breaks down creator performance by:
-- Revenue per minute
-- Creator tier
-- Individual creator effectiveness
+- Revenue per minute (RPM)
+- Creator tier classification
+- Performance comparison across creators
 
 ### Conversion Rate Insights
 ![Conversion Rate by Creator Tier and Engagement](visualizations/engagement_conversion.png)
