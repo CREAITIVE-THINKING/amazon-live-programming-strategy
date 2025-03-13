@@ -162,182 +162,223 @@ def load_real_data():
     Returns:
         tuple: Tuple of DataFrames (creators, products, orders, order_items, sessions, engagement_data)
     """
-    print("Loading real datasets...")
-    
-    # 1. Load Brazilian E-Commerce Dataset (Olist)
-    print("Loading Olist dataset...")
-    olist_customers = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_customers_dataset.csv'))
-    olist_orders = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_orders_dataset.csv'))
-    olist_order_items = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_order_items_dataset.csv'))
-    olist_products = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_products_dataset.csv'))
-    olist_sellers = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_sellers_dataset.csv'))
-    olist_category_translation = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'product_category_name_translation.csv'))
-    
-    # 2. Load Summer Products Dataset
-    print("Loading Summer Products dataset...")
-    summer_products = pd.read_csv(os.path.join(BASE_DIR, 'archive (2)', 'summer-products-with-rating-and-performance_2020-08.csv'))
-    
-    # 3. Load YouTube Engagement Data
-    print("Loading YouTube engagement data...")
-    # Use a smaller chunk of the data due to file size
-    youtube_data = pd.read_csv(os.path.join(BASE_DIR, 'YouTube.csv'), nrows=10000)
-    
-    # Transform the datasets according to the README methodology
-    
-    # 1. Transform Olist data
-    print("Transforming Olist data...")
-    
-    # Join products with category translation to get English category names
-    olist_products = pd.merge(
-        olist_products, 
-        olist_category_translation, 
-        on='product_category_name', 
-        how='left'
-    )
-    
-    # Create time slots from order timestamps
-    olist_orders['order_purchase_timestamp'] = pd.to_datetime(olist_orders['order_purchase_timestamp'])
-    olist_orders['day_of_week'] = olist_orders['order_purchase_timestamp'].dt.day_name()
-    olist_orders['hour_of_day'] = olist_orders['order_purchase_timestamp'].dt.hour
-    
-    # Map hours to time slots
-    def map_to_time_slot(hour):
-        if 6 <= hour < 12:
-            return 'Morning'
-        elif 12 <= hour < 18:
-            return 'Afternoon'
-        elif 18 <= hour < 22:
-            return 'Evening'
+    try:
+        print("Loading real datasets...")
+        
+        # 1. Load Brazilian E-Commerce Dataset (Olist)
+        print("Loading Olist dataset...")
+        try:
+            olist_customers = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_customers_dataset.csv'))
+            olist_orders = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_orders_dataset.csv'))
+            olist_order_items = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_order_items_dataset.csv'))
+            olist_products = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_products_dataset.csv'))
+            olist_sellers = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'olist_sellers_dataset.csv'))
+            olist_category_translation = pd.read_csv(os.path.join(BASE_DIR, 'archive', 'product_category_name_translation.csv'))
+        except Exception as e:
+            print(f"Error loading Olist dataset: {str(e)}")
+            print("Falling back to sample data...")
+            return load_sample_data()
+        
+        # 2. Load Summer Products Dataset
+        print("Loading Summer Products dataset...")
+        try:
+            summer_products = pd.read_csv(os.path.join(BASE_DIR, 'archive (2)', 'summer-products-with-rating-and-performance_2020-08.csv'))
+        except Exception as e:
+            print(f"Error loading Summer Products dataset: {str(e)}")
+            print("Falling back to sample data...")
+            return load_sample_data()
+        
+        # 3. Load YouTube Engagement Data
+        print("Loading YouTube engagement data...")
+        try:
+            # Use a smaller chunk of the data due to file size
+            youtube_data = pd.read_csv(os.path.join(BASE_DIR, 'YouTube.csv'), nrows=10000)
+        except Exception as e:
+            print(f"Error loading YouTube data: {str(e)}")
+            print("Creating dummy YouTube data...")
+            # Create dummy YouTube data if the file can't be loaded
+            youtube_data = pd.DataFrame({
+                'content': ['Dummy content'] * 100,
+                'likeCount': np.random.randint(0, 1000, size=100),
+                'retweetCount': np.random.randint(0, 500, size=100),
+                'replyCount': np.random.randint(0, 200, size=100)
+            })
+        
+        # Transform the datasets according to the README methodology
+        
+        # 1. Transform Olist data
+        print("Transforming Olist data...")
+        
+        # Join products with category translation to get English category names
+        olist_products = pd.merge(
+            olist_products, 
+            olist_category_translation, 
+            on='product_category_name', 
+            how='left'
+        )
+        
+        # Create time slots from order timestamps
+        olist_orders['order_purchase_timestamp'] = pd.to_datetime(olist_orders['order_purchase_timestamp'])
+        olist_orders['day_of_week'] = olist_orders['order_purchase_timestamp'].dt.day_name()
+        olist_orders['hour_of_day'] = olist_orders['order_purchase_timestamp'].dt.hour
+        
+        # Map hours to time slots
+        def map_to_time_slot(hour):
+            if 6 <= hour < 12:
+                return 'Morning'
+            elif 12 <= hour < 18:
+                return 'Afternoon'
+            elif 18 <= hour < 22:
+                return 'Evening'
+            else:
+                return 'Night'
+        
+        olist_orders['time_slot'] = olist_orders['hour_of_day'].apply(map_to_time_slot)
+        
+        # 2. Transform Summer Products data
+        print("Transforming Summer Products data...")
+        
+        # Use the product features to create creator attributes
+        # Map product categories from tags
+        if 'tags' in summer_products.columns:
+            # Extract categories from tags field
+            summer_products_categories = summer_products['tags'].fillna('').str.split(',', expand=True).iloc[:, 0]
+            unique_categories = summer_products_categories.unique()
         else:
-            return 'Night'
-    
-    olist_orders['time_slot'] = olist_orders['hour_of_day'].apply(map_to_time_slot)
-    
-    # 2. Transform Summer Products data
-    print("Transforming Summer Products data...")
-    
-    # Use the product features to create creator attributes
-    # Map product categories to creator specialties
-    summer_products_categories = summer_products['category_hierarchy'].str.split(' > ', expand=True).iloc[:, 0]
-    unique_categories = summer_products_categories.unique()
-    
-    # 3. Transform YouTube data
-    print("Transforming YouTube engagement data...")
-    
-    # Convert YouTube metrics to engagement metrics
-    youtube_data['engagement_score'] = youtube_data['likeCount'].fillna(0) + youtube_data['retweetCount'].fillna(0) + youtube_data['replyCount'].fillna(0)
-    
-    # Now create the necessary data structures for the analysis
-    
-    # 1. Create creators DataFrame based on sellers and YouTube engagement
-    print("Creating creators data...")
-    
-    # Use sellers as a base for creators
-    creators = pd.DataFrame({
-        'creator_id': olist_sellers['seller_id'],
-        'creator_name': ['Creator_' + str(i) for i in range(len(olist_sellers))],
-    })
-    
-    # Assign categories to creators based on what they sell most
-    seller_categories = pd.merge(
-        olist_order_items,
-        olist_products[['product_id', 'product_category_name_english']],
-        on='product_id'
-    )
-    seller_categories = pd.merge(
-        seller_categories,
-        olist_sellers[['seller_id']],
-        left_on='seller_id',
-        right_on='seller_id'
-    )
-    
-    # Get the most common category for each seller
-    seller_top_categories = seller_categories.groupby(['seller_id', 'product_category_name_english']).size().reset_index(name='count')
-    seller_top_categories = seller_top_categories.sort_values(['seller_id', 'count'], ascending=[True, False])
-    seller_top_categories = seller_top_categories.groupby('seller_id').first().reset_index()
-    
-    # Merge with creators
-    creators = pd.merge(
-        creators,
-        seller_top_categories[['seller_id', 'product_category_name_english']],
-        left_on='creator_id',
-        right_on='seller_id',
-        how='left'
-    )
-    creators.rename(columns={'product_category_name_english': 'creator_category'}, inplace=True)
-    creators.drop('seller_id', axis=1, inplace=True)
-    
-    # Assign creator tiers based on sales volume
-    seller_sales = olist_order_items.groupby('seller_id')['price'].sum().reset_index()
-    seller_sales['tier'] = pd.qcut(seller_sales['price'], 3, labels=['Emerging', 'Mid', 'Top'])
-    
-    creators = pd.merge(
-        creators,
-        seller_sales[['seller_id', 'tier']],
-        left_on='creator_id',
-        right_on='seller_id',
-        how='left'
-    )
-    creators.rename(columns={'tier': 'creator_tier'}, inplace=True)
-    creators.drop('seller_id', axis=1, inplace=True)
-    
-    # Fill NaN values
-    creators['creator_category'] = creators['creator_category'].fillna('Other')
-    creators['creator_tier'] = creators['creator_tier'].fillna('Emerging')
-    
-    # 2. Use the original products data
-    print("Creating products data...")
-    products = olist_products[['product_id', 'product_category_name_english']].copy()
-    products.rename(columns={'product_category_name_english': 'product_category'}, inplace=True)
-    
-    # Add product prices from order items
-    product_prices = olist_order_items.groupby('product_id')['price'].mean().reset_index()
-    products = pd.merge(products, product_prices, on='product_id', how='left')
-    
-    # 3. Use the original orders data
-    print("Creating orders data...")
-    orders = olist_orders[['order_id', 'customer_id', 'order_purchase_timestamp', 'day_of_week', 'time_slot']].copy()
-    orders.rename(columns={'order_purchase_timestamp': 'order_date'}, inplace=True)
-    
-    # 4. Use the original order items data
-    print("Creating order items data...")
-    order_items = olist_order_items[['order_id', 'product_id', 'price']].copy()
-    order_items['quantity'] = 1  # Assume quantity of 1 for simplicity
-    
-    # 5. Create sessions data based on orders
-    print("Creating sessions data...")
-    sessions = pd.DataFrame({
-        'session_id': orders['order_id'],
-        'creator_id': np.random.choice(creators['creator_id'], size=len(orders)),
-        'session_date': orders['order_date'],
-        'day_of_week': orders['day_of_week'],
-        'time_slot': orders['time_slot'],
-        'viewer_count': np.random.randint(10, 1000, size=len(orders)),
-        'engagement_rate': np.random.uniform(0.1, 0.9, size=len(orders)),
-        'conversion_rate': np.random.uniform(0.01, 0.2, size=len(orders))
-    })
-    
-    # 6. Create engagement data based on YouTube metrics and orders
-    print("Creating engagement data...")
-    engagement_sample_size = min(5000, len(orders))
-    engagement_data = pd.DataFrame({
-        'customer_id': np.random.choice(olist_customers['customer_id'], size=engagement_sample_size),
-        'session_id': np.random.choice(sessions['session_id'], size=engagement_sample_size),
-        'engagement_type': np.random.choice(['View', 'Like', 'Comment', 'Share', 'Purchase'], size=engagement_sample_size, 
-                                          p=[0.6, 0.2, 0.1, 0.05, 0.05]),
-        'engagement_value': np.random.uniform(0, 100, size=engagement_sample_size)
-    })
-    
-    # Save the processed data
-    print("Saving processed data...")
-    creators.to_csv(os.path.join(PROCESSED_DIR, 'creators.csv'), index=False)
-    products.to_csv(os.path.join(PROCESSED_DIR, 'products.csv'), index=False)
-    orders.to_csv(os.path.join(PROCESSED_DIR, 'orders.csv'), index=False)
-    order_items.to_csv(os.path.join(PROCESSED_DIR, 'order_items.csv'), index=False)
-    sessions.to_csv(os.path.join(PROCESSED_DIR, 'sessions.csv'), index=False)
-    engagement_data.to_csv(os.path.join(PROCESSED_DIR, 'engagement_data.csv'), index=False)
-    
-    return (creators, products, orders, order_items, sessions, engagement_data)
+            # If tags column is not available, use product titles to infer categories
+            summer_products_categories = summer_products['title'].str.extract(r'(\w+)', expand=False)
+            unique_categories = summer_products_categories.unique()
+        
+        # 3. Transform YouTube data
+        print("Transforming YouTube engagement data...")
+        
+        # Convert YouTube metrics to engagement metrics
+        # Make sure the columns exist before using them
+        engagement_columns = ['likeCount', 'retweetCount', 'replyCount']
+        for col in engagement_columns:
+            if col not in youtube_data.columns:
+                youtube_data[col] = 0
+            else:
+                # Convert to numeric, handling any errors
+                youtube_data[col] = pd.to_numeric(youtube_data[col], errors='coerce').fillna(0)
+                
+        youtube_data['engagement_score'] = youtube_data['likeCount'] + youtube_data['retweetCount'] + youtube_data['replyCount']
+        
+        # Now create the necessary data structures for the analysis
+        
+        # 1. Create creators DataFrame based on sellers and YouTube engagement
+        print("Creating creators data...")
+        
+        # Use sellers as a base for creators
+        creators = pd.DataFrame({
+            'creator_id': olist_sellers['seller_id'],
+            'creator_name': ['Creator_' + str(i) for i in range(len(olist_sellers))],
+        })
+        
+        # Assign categories to creators based on what they sell most
+        seller_categories = pd.merge(
+            olist_order_items,
+            olist_products[['product_id', 'product_category_name_english']],
+            on='product_id'
+        )
+        seller_categories = pd.merge(
+            seller_categories,
+            olist_sellers[['seller_id']],
+            left_on='seller_id',
+            right_on='seller_id'
+        )
+        
+        # Get the most common category for each seller
+        seller_top_categories = seller_categories.groupby(['seller_id', 'product_category_name_english']).size().reset_index(name='count')
+        seller_top_categories = seller_top_categories.sort_values(['seller_id', 'count'], ascending=[True, False])
+        seller_top_categories = seller_top_categories.groupby('seller_id').first().reset_index()
+        
+        # Merge with creators
+        creators = pd.merge(
+            creators,
+            seller_top_categories[['seller_id', 'product_category_name_english']],
+            left_on='creator_id',
+            right_on='seller_id',
+            how='left'
+        )
+        creators.rename(columns={'product_category_name_english': 'creator_category'}, inplace=True)
+        creators.drop('seller_id', axis=1, inplace=True)
+        
+        # Assign creator tiers based on sales volume
+        seller_sales = olist_order_items.groupby('seller_id')['price'].sum().reset_index()
+        seller_sales['tier'] = pd.qcut(seller_sales['price'], 3, labels=['Emerging', 'Mid', 'Top'])
+        
+        creators = pd.merge(
+            creators,
+            seller_sales[['seller_id', 'tier']],
+            left_on='creator_id',
+            right_on='seller_id',
+            how='left'
+        )
+        creators.rename(columns={'tier': 'creator_tier'}, inplace=True)
+        creators.drop('seller_id', axis=1, inplace=True)
+        
+        # Fill NaN values
+        creators['creator_category'] = creators['creator_category'].fillna('Other')
+        creators['creator_tier'] = creators['creator_tier'].fillna('Emerging')
+        
+        # 2. Use the original products data
+        print("Creating products data...")
+        products = olist_products[['product_id', 'product_category_name_english']].copy()
+        products.rename(columns={'product_category_name_english': 'product_category'}, inplace=True)
+        
+        # Add product prices from order items
+        product_prices = olist_order_items.groupby('product_id')['price'].mean().reset_index()
+        products = pd.merge(products, product_prices, on='product_id', how='left')
+        
+        # 3. Use the original orders data
+        print("Creating orders data...")
+        orders = olist_orders[['order_id', 'customer_id', 'order_purchase_timestamp', 'day_of_week', 'time_slot']].copy()
+        orders.rename(columns={'order_purchase_timestamp': 'order_date'}, inplace=True)
+        
+        # 4. Use the original order items data
+        print("Creating order items data...")
+        order_items = olist_order_items[['order_id', 'product_id', 'price']].copy()
+        order_items['quantity'] = 1  # Assume quantity of 1 for simplicity
+        
+        # 5. Create sessions data based on orders
+        print("Creating sessions data...")
+        sessions = pd.DataFrame({
+            'session_id': orders['order_id'],
+            'creator_id': np.random.choice(creators['creator_id'], size=len(orders)),
+            'session_date': orders['order_date'],
+            'day_of_week': orders['day_of_week'],
+            'time_slot': orders['time_slot'],
+            'viewer_count': np.random.randint(10, 1000, size=len(orders)),
+            'engagement_rate': np.random.uniform(0.1, 0.9, size=len(orders)),
+            'conversion_rate': np.random.uniform(0.01, 0.2, size=len(orders))
+        })
+        
+        # 6. Create engagement data based on YouTube metrics and orders
+        print("Creating engagement data...")
+        engagement_sample_size = min(5000, len(orders))
+        engagement_data = pd.DataFrame({
+            'customer_id': np.random.choice(olist_customers['customer_id'], size=engagement_sample_size),
+            'session_id': np.random.choice(sessions['session_id'], size=engagement_sample_size),
+            'engagement_type': np.random.choice(['View', 'Like', 'Comment', 'Share', 'Purchase'], size=engagement_sample_size, 
+                                              p=[0.6, 0.2, 0.1, 0.05, 0.05]),
+            'engagement_value': np.random.uniform(0, 100, size=engagement_sample_size)
+        })
+        
+        # Save the processed data
+        print("Saving processed data...")
+        creators.to_csv(os.path.join(PROCESSED_DIR, 'creators.csv'), index=False)
+        products.to_csv(os.path.join(PROCESSED_DIR, 'products.csv'), index=False)
+        orders.to_csv(os.path.join(PROCESSED_DIR, 'orders.csv'), index=False)
+        order_items.to_csv(os.path.join(PROCESSED_DIR, 'order_items.csv'), index=False)
+        sessions.to_csv(os.path.join(PROCESSED_DIR, 'sessions.csv'), index=False)
+        engagement_data.to_csv(os.path.join(PROCESSED_DIR, 'engagement_data.csv'), index=False)
+        
+        return (creators, products, orders, order_items, sessions, engagement_data)
+    except Exception as e:
+        print(f"Error loading real data: {str(e)}")
+        print("Falling back to sample data...")
+        return load_sample_data()
 
 def load_sample_data():
     """
